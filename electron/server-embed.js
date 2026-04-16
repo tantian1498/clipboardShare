@@ -1,0 +1,168 @@
+/**
+ * 可启停的内嵌服务端 — 从 server.js 提取
+ *
+ * 用法:
+ *   var EmbeddedServer = require('./server-embed');
+ *   var srv = new EmbeddedServer();
+ *   srv.start(3846, function (err) { ... });
+ *   srv.stop(function () { ... });
+ */
+var express = require('express');
+var path = require('path');
+var os = require('os');
+
+function EmbeddedServer() {
+  this._server = null;
+  this._port = 3846;
+  this.running = false;
+}
+
+/**
+ * 获取本机局域网 IPv4 地址列表（排除回环）
+ */
+function getLocalIPv4List() {
+  var list = [];
+  var interfaces = os.networkInterfaces();
+  var name;
+  for (name in interfaces) {
+    if (!Object.prototype.hasOwnProperty.call(interfaces, name)) continue;
+    var addrs = interfaces[name];
+    for (var i = 0; i < addrs.length; i++) {
+      var addr = addrs[i];
+      if (addr.family === 'IPv4' && addr.address !== '127.0.0.1') {
+        list.push(addr.address);
+      }
+    }
+  }
+  return list;
+}
+
+/**
+ * 启动服务端
+ * @param {number} port
+ * @param {function(Error|null)} callback
+ */
+EmbeddedServer.prototype.start = function (port, callback) {
+  var self = this;
+  self._port = port || 3846;
+
+  var app = express();
+
+  var sharedContent = { text: '', images: [], files: [] };
+  var syncState = { text: '', version: 0, lastUpdater: '' };
+
+  function updateSyncFromShared(text, updater) {
+    if (syncState.text === text) return;
+    syncState.text = text;
+    syncState.version += 1;
+    syncState.lastUpdater = updater || 'web';
+  }
+
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.static(path.join(__dirname, '..', 'public')));
+
+  app.get('/api/host', function (req, res) {
+    var ips = getLocalIPv4List();
+    var urls = ips.map(function (ip) { return 'http://' + ip + ':' + self._port; });
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.json({ ips: ips, port: self._port, urls: urls });
+  });
+
+  app.get('/api/text', function (req, res) {
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.json({ text: sharedContent.text });
+  });
+
+  app.post('/api/text', function (req, res) {
+    var body = req.body;
+    if (body && typeof body.text === 'string') {
+      sharedContent.text = body.text;
+      updateSyncFromShared(body.text);
+    }
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.json({ ok: true, text: sharedContent.text });
+  });
+
+  app.get('/api/content', function (req, res) {
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.json({ text: sharedContent.text, images: sharedContent.images, files: sharedContent.files });
+  });
+
+  app.post('/api/content', function (req, res) {
+    var body = req.body;
+    if (body) {
+      if (typeof body.text === 'string') {
+        sharedContent.text = body.text;
+        updateSyncFromShared(body.text);
+      }
+      if (Array.isArray(body.images)) sharedContent.images = body.images;
+      if (Array.isArray(body.files)) sharedContent.files = body.files;
+    }
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.json({ ok: true, text: sharedContent.text, images: sharedContent.images, files: sharedContent.files });
+  });
+
+  app.get('/api/sync', function (req, res) {
+    var since = parseInt(req.query.since, 10);
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    if (!isNaN(since) && since >= syncState.version) {
+      res.json({ changed: false, version: syncState.version });
+      return;
+    }
+    res.json({ changed: true, text: syncState.text, version: syncState.version, lastUpdater: syncState.lastUpdater });
+  });
+
+  app.post('/api/sync', function (req, res) {
+    var body = req.body;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    if (!body || typeof body.text !== 'string' || typeof body.deviceId !== 'string') {
+      res.status(400).json({ ok: false, error: 'text 和 deviceId 为必填字段' });
+      return;
+    }
+    if (syncState.text !== body.text) {
+      syncState.text = body.text;
+      syncState.version += 1;
+      syncState.lastUpdater = body.deviceId;
+      sharedContent.text = body.text;
+    }
+    res.json({ ok: true, version: syncState.version });
+  });
+
+  app.get('/', function (req, res) {
+    res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+  });
+
+  self._server = app.listen(self._port, '0.0.0.0', function () {
+    self.running = true;
+    callback(null);
+  });
+
+  self._server.on('error', function (err) {
+    if (err.code === 'EADDRINUSE') {
+      self.running = false;
+      callback(new Error('端口 ' + self._port + ' 已被占用'));
+      return;
+    }
+    callback(err);
+  });
+};
+
+/**
+ * 停止服务端
+ * @param {function()} [callback]
+ */
+EmbeddedServer.prototype.stop = function (callback) {
+  var self = this;
+  if (self._server) {
+    self._server.close(function () {
+      self.running = false;
+      self._server = null;
+      if (callback) callback();
+    });
+  } else {
+    self.running = false;
+    if (callback) callback();
+  }
+};
+
+module.exports = EmbeddedServer;
