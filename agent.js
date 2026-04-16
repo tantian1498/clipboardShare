@@ -229,7 +229,10 @@ function readClipboard(callback) {
     cmdArgs = [];
   } else if (platform === 'win32') {
     cmd = 'powershell';
-    cmdArgs = ['-NoProfile', '-Command', 'Get-Clipboard'];
+    cmdArgs = [
+      '-NoProfile', '-Command',
+      '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Clipboard'
+    ];
   } else {
     cmd = 'xclip';
     cmdArgs = ['-selection', 'clipboard', '-o'];
@@ -240,12 +243,10 @@ function readClipboard(callback) {
       callback(err, '');
       return;
     }
-    // Windows PowerShell 输出末尾会有 \r\n，统一去掉尾部换行
     var text = stdout.replace(/\r\n$/, '').replace(/\n$/, '');
     callback(null, text);
   });
 
-  // 避免子进程因无 stdin 挂起
   if (child.stdin) {
     child.stdin.end();
   }
@@ -263,7 +264,10 @@ function writeClipboard(text, callback) {
     cmdArgs = [];
   } else if (platform === 'win32') {
     cmd = 'powershell';
-    cmdArgs = ['-NoProfile', '-Command', 'Set-Clipboard -Value $input'];
+    cmdArgs = [
+      '-NoProfile', '-Command',
+      '[Console]::InputEncoding = [System.Text.Encoding]::UTF8; $input | Set-Clipboard'
+    ];
   } else {
     cmd = 'xclip';
     cmdArgs = ['-selection', 'clipboard'];

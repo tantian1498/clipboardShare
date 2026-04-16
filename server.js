@@ -155,8 +155,16 @@ app.get('/', function (req, res) {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, '0.0.0.0', function () {
+var server = app.listen(PORT, '0.0.0.0', function () {
   console.log('剪贴板共享服务已启动');
   console.log('本机访问: http://localhost:' + PORT);
   console.log('其它电脑访问: http://<本机IP>:' + PORT);
+});
+
+server.on('error', function (err) {
+  if (err.code === 'EADDRINUSE') {
+    console.log('端口 ' + PORT + ' 已被占用，跳过服务端启动（将连接已有服务）');
+    return;
+  }
+  throw err;
 });
