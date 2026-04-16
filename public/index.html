@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>跨电脑剪贴板</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0f0f12;
+      --surface: #18181c;
+      --border: #2a2a30;
+      --text: #e4e4e7;
+      --text-muted: #71717a;
+      --accent: #22c55e;
+      --accent-hover: #16a34a;
+      --danger: #ef4444;
+      --danger-hover: #dc2626;
+      --radius: 10px;
+      --shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Noto Sans SC', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      line-height: 1.6;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 640px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 1.1rem;
+      color: var(--text);
+    }
+
+    .editor-wrap {
+      padding: 20px 24px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 280px;
+      padding: 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    textarea:focus {
+      border-color: var(--accent);
+    }
+
+    textarea::placeholder {
+      color: var(--text-muted);
+    }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 20px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn-copy {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-copy:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn-clear {
+      background: var(--danger);
+      color: #fff;
+    }
+
+    .btn-clear:hover {
+      background: var(--danger-hover);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      padding: 12px 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      opacity: 0;
+      transition: transform 0.3s, opacity 0.3s;
+      z-index: 100;
+      box-shadow: var(--shadow);
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+
+    .hint {
+      margin-top: 16px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .host-box {
+      padding: 14px 20px;
+      margin-bottom: 20px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 13px;
+    }
+
+    .host-box .label {
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .host-box .url {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: var(--accent);
+      word-break: break-all;
+    }
+
+    .host-box .url + .url {
+      margin-top: 4px;
+    }
+
+    .images-section {
+      margin-top: 20px;
+    }
+
+    .images-section .label {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .images-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .img-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      width: 140px;
+    }
+
+    .img-card img {
+      display: block;
+      width: 100%;
+      height: 100px;
+      object-fit: cover;
+      background: var(--surface);
+    }
+
+    .img-card .img-actions {
+      padding: 8px;
+      display: flex;
+      gap: 6px;
+    }
+
+    .img-card .btn-small {
+      flex: 1;
+      padding: 6px 10px;
+      font-size: 12px;
+      border-radius: 6px;
+    }
+
+    .upload-section {
+      margin-top: 20px;
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+      background: var(--bg);
+      padding: 14px;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .upload-section.drag-over {
+      border-color: var(--accent);
+      background: #122017;
+    }
+
+    .upload-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .upload-tip {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .files-section {
+      margin-top: 20px;
+    }
+
+    .files-section .label {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .file-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      padding: 10px;
+      margin-bottom: 8px;
+    }
+
+    .file-name {
+      font-size: 13px;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 320px;
+    }
+
+    .file-meta {
+      margin-top: 2px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">跨电脑剪贴板</header>
+    <div class="editor-wrap">
+      <div class="host-box" id="hostBox" aria-live="polite">
+        <div class="label">其它电脑访问本机：</div>
+        <div class="url" id="hostUrl">获取中…</div>
+      </div>
+      <textarea id="text" placeholder="在此输入或粘贴文本；也可直接 Ctrl+V 粘贴图片"></textarea>
+      <div class="actions">
+        <button type="button" class="btn btn-copy" id="copyBtn">复制文本</button>
+        <button type="button" class="btn btn-clear" id="clearBtn">清空</button>
+      </div>
+      <div class="upload-section" id="uploadSection">
+        <div class="upload-top">
+          <div class="upload-tip">拖拽文件到这里上传，或点击按钮选择文件</div>
+          <button type="button" class="btn btn-copy" id="uploadBtn">选择文件</button>
+          <input type="file" id="fileInput" multiple hidden>
+        </div>
+      </div>
+      <div class="images-section" id="imagesSection">
+        <div class="label" id="imagesLabel">已粘贴图片：</div>
+        <div class="images-wrap" id="imagesWrap"></div>
+      </div>
+      <div class="files-section" id="filesSection">
+        <div class="label">已上传文件：</div>
+        <div id="filesWrap"></div>
+      </div>
+      <p class="hint">编辑后会自动保存。支持粘贴图片、文件上传和拖拽上传，其它设备可在此下载。</p>
+    </div>
+  </div>
+  <div class="toast" id="toast" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

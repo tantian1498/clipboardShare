@@ -1,0 +1,12 @@
+{
+  "name": "clipboard-share",
+  "version": "1.0.0",
+  "description": "跨电脑复制粘贴共享",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
