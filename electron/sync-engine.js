@@ -274,10 +274,22 @@ SyncEngine.prototype._pollClipboard = function () {
   });
 };
 
+SyncEngine.prototype._formatSize = function (bytes) {
+  if (bytes < 1024) return bytes + 'B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'KB';
+  return (bytes / 1024 / 1024).toFixed(1) + 'MB';
+};
+
 SyncEngine.prototype._pushToServer = function (type, data) {
   var self = this;
   var pushUrl = self.serverUrl + '/api/sync';
-  var label = type === 'image' ? '[图片]' : data;
+  var sizeBytes = Buffer.byteLength(data, 'utf8');
+  var sizeStr = self._formatSize(sizeBytes);
+
+  if (type === 'image') {
+    self.emit('pushing', '正在推送图片 (' + sizeStr + ')...');
+  }
+
   self._httpRequest('POST', pushUrl, { type: type, data: data, deviceId: self.deviceId }, function (err, respData) {
     if (err) {
       self.emit('error', err);
@@ -290,6 +302,7 @@ SyncEngine.prototype._pushToServer = function (type, data) {
       self.connected = true;
       self.emit('connected');
     }
+    var label = type === 'image' ? '[图片 ' + sizeStr + ']' : data;
     self.emit('pushed', label);
   });
 };
@@ -346,7 +359,12 @@ SyncEngine.prototype._pollServer = function () {
     }
     self.lastContentType = type;
 
-    var label = type === 'image' ? '[图片]' : content;
+    var sizeStr = self._formatSize(Buffer.byteLength(content, 'utf8'));
+    var label = type === 'image' ? '[图片 ' + sizeStr + ']' : content;
+
+    if (type === 'image') {
+      self.emit('syncing', '正在接收图片 (' + sizeStr + ')...');
+    }
 
     self._writeClipboard(type, content, function (writeErr) {
       if (writeErr) {

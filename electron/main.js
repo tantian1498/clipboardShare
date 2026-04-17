@@ -108,8 +108,16 @@ engine.on('disconnected', function () {
   broadcastStatus();
 });
 
+engine.on('pushing', function (msg) {
+  addLog('info', msg);
+});
+
 engine.on('pushed', function (text) {
   addLog('push', text);
+});
+
+engine.on('syncing', function (msg) {
+  addLog('info', msg);
 });
 
 engine.on('synced', function (text) {

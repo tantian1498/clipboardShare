@@ -124,18 +124,43 @@ RELEASE_NOTES="## ClipboardShare $TAG
 
 GH_ARGS="--title \"ClipboardShare $TAG\" --notes \"$RELEASE_NOTES\""
 
-if [ -n "$MAC_DMG" ] && [ -n "$WIN_EXE" ]; then
-  gh release create "$TAG" "$MAC_DMG" "$WIN_EXE" \
-    --title "ClipboardShare $TAG" \
-    --notes "$RELEASE_NOTES"
-elif [ -n "$MAC_DMG" ]; then
-  gh release create "$TAG" "$MAC_DMG" \
-    --title "ClipboardShare $TAG" \
-    --notes "$RELEASE_NOTES"
-elif [ -n "$WIN_EXE" ]; then
-  gh release create "$TAG" "$WIN_EXE" \
-    --title "ClipboardShare $TAG" \
-    --notes "$RELEASE_NOTES"
+gh release create "$TAG" \
+  --title "ClipboardShare $TAG" \
+  --notes "$RELEASE_NOTES"
+ok "Release 已创建"
+
+if [ -n "$MAC_DMG" ]; then
+  log "上传 Mac 安装包: $(basename "$MAC_DMG") ($(du -h "$MAC_DMG" | cut -f1))..."
+  gh release upload "$TAG" "$MAC_DMG" --clobber 2>&1 &
+  MAC_PID=$!
+fi
+
+if [ -n "$WIN_EXE" ]; then
+  log "上传 Windows 安装包: $(basename "$WIN_EXE") ($(du -h "$WIN_EXE" | cut -f1))..."
+  gh release upload "$TAG" "$WIN_EXE" --clobber 2>&1 &
+  WIN_PID=$!
+fi
+
+UPLOAD_FAIL=0
+if [ -n "$MAC_PID" ]; then
+  if wait $MAC_PID; then
+    ok "Mac 安装包上传完成"
+  else
+    warn "Mac 安装包上传失败"
+    UPLOAD_FAIL=1
+  fi
+fi
+if [ -n "$WIN_PID" ]; then
+  if wait $WIN_PID; then
+    ok "Windows 安装包上传完成"
+  else
+    warn "Windows 安装包上传失败"
+    UPLOAD_FAIL=1
+  fi
+fi
+
+if [ "$UPLOAD_FAIL" = "1" ]; then
+  warn "部分文件上传失败，可以稍后手动重试: gh release upload $TAG <文件路径> --clobber"
 fi
 
 ok "Release 创建成功！"
