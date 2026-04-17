@@ -1,8 +1,18 @@
 /**
- * 渲染进程逻辑 — 设置窗口
+ * 渲染进程 — 剪贴板历史 + 设置面板
  * 无 ?. 与 ?? 语法
  */
 (function () {
+  // ─── DOM 引用 ──────────────────────────────────────────
+  var searchInput = document.getElementById('searchInput');
+  var statusIndicator = document.getElementById('statusIndicator');
+  var settingsBtn = document.getElementById('settingsBtn');
+  var settingsOverlay = document.getElementById('settingsOverlay');
+  var settingsCloseBtn = document.getElementById('settingsCloseBtn');
+  var historyList = document.getElementById('historyList');
+  var emptyState = document.getElementById('emptyState');
+  var toastEl = document.getElementById('toast');
+
   var modeHostBtn = document.getElementById('modeHost');
   var modeClientBtn = document.getElementById('modeClient');
   var serverUrlGroup = document.getElementById('serverUrlGroup');
@@ -14,10 +24,22 @@
   var statusDot = document.getElementById('statusDot');
   var statusText = document.getElementById('statusText');
   var statusDevice = document.getElementById('statusDevice');
-  var logsWrap = document.getElementById('logsWrap');
-  var toastEl = document.getElementById('toast');
+  var versionText = document.getElementById('versionText');
+  var checkUpdateBtn = document.getElementById('checkUpdateBtn');
+  var updateInfo = document.getElementById('updateInfo');
+  var newVersionText = document.getElementById('newVersionText');
+  var updateNotes = document.getElementById('updateNotes');
+  var downloadBtn = document.getElementById('downloadBtn');
+
+  var filterTabs = document.querySelectorAll('.tab[data-filter]');
 
   var currentMode = 'host';
+  var currentFilter = 'all';
+  var searchQuery = '';
+  var historyData = [];
+  var pendingReleaseUrl = '';
+
+  // ─── 工具函数 ──────────────────────────────────────────
 
   function showToast(msg) {
     if (!toastEl) return;
@@ -28,6 +50,212 @@
       toastEl.classList.remove('show');
     }, 2000);
   }
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+  }
+
+  function formatTime(isoStr) {
+    var d = new Date(isoStr);
+    var h = d.getHours();
+    var m = d.getMinutes();
+    return (h < 10 ? '0' + h : h) + ':' + (m < 10 ? '0' + m : m);
+  }
+
+  // ─── 搜索 ──────────────────────────────────────────────
+
+  searchInput.addEventListener('input', function () {
+    searchQuery = searchInput.value.trim().toLowerCase();
+    renderHistory();
+  });
+
+  // ─── 筛选标签 ──────────────────────────────────────────
+
+  for (var i = 0; i < filterTabs.length; i++) {
+    filterTabs[i].addEventListener('click', function () {
+      for (var j = 0; j < filterTabs.length; j++) {
+        filterTabs[j].classList.remove('active');
+      }
+      this.classList.add('active');
+      currentFilter = this.getAttribute('data-filter');
+      renderHistory();
+    });
+  }
+
+  // ─── 历史列表渲染 ──────────────────────────────────────
+
+  function filterEntries() {
+    return historyData.filter(function (entry) {
+      if (currentFilter !== 'all' && entry.type !== currentFilter) return false;
+      if (searchQuery && entry.type === 'text') {
+        return (entry.data || '').toLowerCase().indexOf(searchQuery) !== -1;
+      }
+      if (searchQuery && entry.type === 'image') return false;
+      return true;
+    });
+  }
+
+  function createCard(entry) {
+    var card = document.createElement('div');
+    card.className = 'history-card';
+    card.setAttribute('data-id', entry.id);
+
+    var dirLabel = entry.direction === 'push' ? '推送' : '接收';
+    var dirClass = entry.direction === 'push' ? 'push' : 'sync';
+
+    var headerHtml =
+      '<div class="card-header">' +
+        '<span class="card-direction ' + dirClass + '">' + dirLabel + '</span>' +
+        '<span class="card-time">' + formatTime(entry.time) + '</span>' +
+      '</div>';
+
+    var contentHtml;
+    if (entry.type === 'image') {
+      if (entry.hasImage || (entry.data && entry.data.length > 200)) {
+        contentHtml = '<div class="card-content image-preview" data-image-id="' + entry.id + '"><div style="color:var(--text3);font-size:12px;padding:8px 0">加载图片中...</div></div>';
+      } else if (entry.data) {
+        contentHtml = '<div class="card-content image-preview"><img src="data:image/png;base64,' + entry.data + '"></div>';
+      } else {
+        contentHtml = '<div class="card-content">[图片]</div>';
+      }
+    } else {
+      contentHtml = '<div class="card-content">' + escapeHtml(entry.preview || entry.data || '') + '</div>';
+    }
+
+    var actionsHtml =
+      '<div class="card-actions">' +
+        '<button class="card-action-btn copy-btn" title="复制">📋</button>' +
+        '<button class="card-action-btn danger delete-btn" title="删除">🗑</button>' +
+      '</div>';
+
+    card.innerHTML = headerHtml + contentHtml + actionsHtml;
+
+    card.querySelector('.copy-btn').addEventListener('click', function (e) {
+      e.stopPropagation();
+      window.clipboardAPI.copyHistoryItem(entry.id).then(function () {
+        showToast('已复制到剪贴板');
+      });
+    });
+
+    card.querySelector('.delete-btn').addEventListener('click', function (e) {
+      e.stopPropagation();
+      window.clipboardAPI.deleteHistoryItem(entry.id).then(function () {
+        for (var k = 0; k < historyData.length; k++) {
+          if (historyData[k].id === entry.id) {
+            historyData.splice(k, 1);
+            break;
+          }
+        }
+        renderHistory();
+      });
+    });
+
+    card.addEventListener('click', function () {
+      window.clipboardAPI.copyHistoryItem(entry.id).then(function () {
+        showToast('已复制到剪贴板');
+      });
+    });
+
+    return card;
+  }
+
+  function renderHistory() {
+    var filtered = filterEntries();
+
+    while (historyList.firstChild) {
+      historyList.removeChild(historyList.firstChild);
+    }
+
+    if (filtered.length === 0) {
+      historyList.appendChild(emptyState);
+      emptyState.style.display = '';
+      return;
+    }
+
+    emptyState.style.display = 'none';
+
+    for (var i = 0; i < filtered.length; i++) {
+      var card = createCard(filtered[i]);
+      historyList.appendChild(card);
+    }
+
+    loadLazyImages();
+  }
+
+  function loadLazyImages() {
+    var imgContainers = document.querySelectorAll('[data-image-id]');
+    for (var i = 0; i < imgContainers.length; i++) {
+      (function (container) {
+        var id = container.getAttribute('data-image-id');
+        if (container._loaded) return;
+        container._loaded = true;
+        window.clipboardAPI.getHistoryImage(id).then(function (base64) {
+          if (base64) {
+            container.innerHTML = '<img src="data:image/png;base64,' + base64 + '">';
+          } else {
+            container.innerHTML = '<span style="color:var(--text3);font-size:12px">[图片已丢失]</span>';
+          }
+        });
+      })(imgContainers[i]);
+    }
+  }
+
+  // ─── 加载历史 ──────────────────────────────────────────
+
+  window.clipboardAPI.getHistory().then(function (data) {
+    historyData = data || [];
+    renderHistory();
+  });
+
+  window.clipboardAPI.onHistoryUpdate(function (entry) {
+    historyData.unshift(entry);
+    if (historyData.length > 100) historyData.pop();
+    renderHistory();
+  });
+
+  // ─── 状态更新 ──────────────────────────────────────────
+
+  function updateStatus(status) {
+    if (!status) return;
+    if (status.connected) {
+      statusIndicator.classList.add('connected');
+      statusIndicator.title = '已连接';
+      statusDot.classList.add('connected');
+      statusText.textContent = '已连接';
+    } else {
+      statusIndicator.classList.remove('connected');
+      statusIndicator.title = status.running ? '连接中...' : '未连接';
+      statusDot.classList.remove('connected');
+      statusText.textContent = status.running ? '连接中...' : '未连接';
+    }
+    if (status.deviceId) {
+      statusDevice.textContent = status.deviceId;
+    }
+    if (typeof status.autoLaunch === 'boolean') {
+      autoLaunchInput.checked = status.autoLaunch;
+    }
+  }
+
+  window.clipboardAPI.getStatus().then(updateStatus);
+  window.clipboardAPI.onStatusChange(updateStatus);
+
+  // ─── 设置面板 ──────────────────────────────────────────
+
+  settingsBtn.addEventListener('click', function () {
+    settingsOverlay.classList.add('show');
+  });
+
+  settingsCloseBtn.addEventListener('click', function () {
+    settingsOverlay.classList.remove('show');
+  });
+
+  settingsOverlay.addEventListener('click', function (e) {
+    if (e.target === settingsOverlay) {
+      settingsOverlay.classList.remove('show');
+    }
+  });
 
   function setMode(mode) {
     currentMode = mode;
@@ -47,62 +275,6 @@
   modeHostBtn.addEventListener('click', function () { setMode('host'); });
   modeClientBtn.addEventListener('click', function () { setMode('client'); });
 
-  function badgeClass(type) {
-    if (type === 'push') return 'push';
-    if (type === 'sync') return 'sync';
-    if (type === 'error') return 'error';
-    return 'info';
-  }
-
-  function badgeLabel(type) {
-    if (type === 'push') return '推送';
-    if (type === 'sync') return '接收';
-    if (type === 'error') return '错误';
-    return '信息';
-  }
-
-  function renderLogEntry(log) {
-    var div = document.createElement('div');
-    div.className = 'log-entry';
-    div.innerHTML =
-      '<span class="log-time">' + escapeHtml(log.time) + '</span>' +
-      '<span class="log-badge ' + badgeClass(log.type) + '">' + badgeLabel(log.type) + '</span>' +
-      '<span class="log-text">' + escapeHtml(log.text) + '</span>';
-    return div;
-  }
-
-  function renderLogs(logs) {
-    logsWrap.innerHTML = '';
-    if (!logs || logs.length === 0) {
-      logsWrap.innerHTML = '<div style="color:var(--text2); text-align:center; padding:12px 0">暂无记录</div>';
-      return;
-    }
-    for (var i = 0; i < logs.length; i++) {
-      logsWrap.appendChild(renderLogEntry(logs[i]));
-    }
-  }
-
-  function escapeHtml(str) {
-    var div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
-  }
-
-  function updateStatus(status) {
-    if (!status) return;
-    if (status.connected) {
-      statusDot.classList.add('connected');
-      statusText.textContent = '已连接';
-    } else {
-      statusDot.classList.remove('connected');
-      statusText.textContent = status.running ? '连接中...' : '未连接';
-    }
-    if (status.deviceId) {
-      statusDevice.textContent = status.deviceId;
-    }
-  }
-
-  // 加载配置
   window.clipboardAPI.getConfig().then(function (config) {
     if (!config) return;
     setMode(config.mode || 'host');
@@ -111,51 +283,28 @@
     autoLaunchInput.checked = !!config.autoLaunch;
   });
 
-  // 加载状态
-  window.clipboardAPI.getStatus().then(function (status) {
-    updateStatus(status);
-    if (status && status.logs) {
-      renderLogs(status.logs);
-    }
-  });
-
-  // 开机自启 — 点击立即生效
   autoLaunchInput.addEventListener('change', function () {
     window.clipboardAPI.toggleAutoLaunch(autoLaunchInput.checked);
   });
 
-  // 实时状态更新（包括来自托盘的自启变化）
-  window.clipboardAPI.onStatusChange(function (status) {
-    updateStatus(status);
-    if (status && typeof status.autoLaunch === 'boolean') {
-      autoLaunchInput.checked = status.autoLaunch;
+  saveBtn.addEventListener('click', function () {
+    var config = {
+      mode: currentMode,
+      serverUrl: serverUrlInput.value.replace(/\/+$/, ''),
+      port: parseInt(portInput.value, 10) || 3846,
+      autoLaunch: autoLaunchInput.checked
+    };
+    if (config.mode === 'client' && !config.serverUrl) {
+      showToast('请输入服务器地址');
+      return;
     }
+    window.clipboardAPI.saveConfig(config).then(function () {
+      showToast('已保存并应用');
+      settingsOverlay.classList.remove('show');
+    });
   });
 
-  // 实时日志
-  window.clipboardAPI.onSyncLog(function (log) {
-    var placeholder = logsWrap.querySelector('div[style]');
-    if (placeholder) logsWrap.innerHTML = '';
-    var entry = renderLogEntry(log);
-    if (logsWrap.firstChild) {
-      logsWrap.insertBefore(entry, logsWrap.firstChild);
-    } else {
-      logsWrap.appendChild(entry);
-    }
-    // 限制显示条数
-    while (logsWrap.children.length > 20) {
-      logsWrap.removeChild(logsWrap.lastChild);
-    }
-  });
-
-  // 版本与更新
-  var versionText = document.getElementById('versionText');
-  var checkUpdateBtn = document.getElementById('checkUpdateBtn');
-  var updateInfo = document.getElementById('updateInfo');
-  var newVersionText = document.getElementById('newVersionText');
-  var updateNotes = document.getElementById('updateNotes');
-  var downloadBtn = document.getElementById('downloadBtn');
-  var pendingReleaseUrl = '';
+  // ─── 版本与更新 ────────────────────────────────────────
 
   window.clipboardAPI.getAppVersion().then(function (ver) {
     if (ver) versionText.textContent = 'v' + ver;
@@ -187,24 +336,5 @@
     if (pendingReleaseUrl) {
       window.clipboardAPI.openReleaseUrl(pendingReleaseUrl);
     }
-  });
-
-  // 保存
-  saveBtn.addEventListener('click', function () {
-    var config = {
-      mode: currentMode,
-      serverUrl: serverUrlInput.value.replace(/\/+$/, ''),
-      port: parseInt(portInput.value, 10) || 3846,
-      autoLaunch: autoLaunchInput.checked
-    };
-
-    if (config.mode === 'client' && !config.serverUrl) {
-      showToast('请输入服务器地址');
-      return;
-    }
-
-    window.clipboardAPI.saveConfig(config).then(function () {
-      showToast('已保存并应用');
-    });
   });
 })();

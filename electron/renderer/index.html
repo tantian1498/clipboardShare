@@ -8,73 +8,109 @@
 </head>
 <body>
 
-  <h1>ClipboardShare</h1>
-
-  <!-- 连接状态 -->
-  <div class="section">
-    <div class="section-title">连接状态</div>
-    <div class="status-bar">
-      <div class="status-dot" id="statusDot"></div>
-      <div class="status-text" id="statusText">未连接</div>
-      <div class="status-device" id="statusDevice"></div>
+  <!-- 顶栏：搜索 + 状态 + 设置 -->
+  <div class="topbar">
+    <div class="search-wrap">
+      <svg class="search-icon" viewBox="0 0 20 20" width="14" height="14">
+        <path fill="currentColor" d="M8.5 3a5.5 5.5 0 014.227 9.02l4.127 4.126a.75.75 0 01-1.06 1.061l-4.128-4.127A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z"/>
+      </svg>
+      <input type="text" id="searchInput" placeholder="搜索剪贴板..." autocomplete="off">
+    </div>
+    <div class="topbar-right">
+      <div class="status-indicator" id="statusIndicator" title="未连接"></div>
+      <button class="icon-btn" id="settingsBtn" title="设置">
+        <svg viewBox="0 0 20 20" width="16" height="16">
+          <path fill="currentColor" d="M11.078 0c.294 0 .557.183.656.46l.574 1.61c.403.17.788.38 1.147.628l1.652-.405a.69.69 0 01.735.282l1.078 1.87a.69.69 0 01-.08.793l-1.078 1.205c.045.217.073.44.084.667l.001.14c0 .271-.017.539-.051.8l1.078 1.206a.69.69 0 01.08.793l-1.078 1.87a.69.69 0 01-.735.283l-1.652-.406c-.36.248-.744.458-1.147.628l-.574 1.611a.69.69 0 01-.656.46H8.922a.69.69 0 01-.656-.46l-.574-1.61a5.47 5.47 0 01-1.147-.628l-1.652.405a.69.69 0 01-.735-.283l-1.078-1.87a.69.69 0 01.08-.793l1.078-1.206A5.51 5.51 0 014.19 10.25v-.14c0-.282.029-.558.084-.826L3.16 8.126a.69.69 0 01-.08-.793L4.158 5.463a.69.69 0 01.735-.282l1.652.405c.36-.248.744-.458 1.147-.628L8.266.46A.69.69 0 018.922 0h2.156zM10 6.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z"/>
+        </svg>
+      </button>
     </div>
   </div>
 
-  <!-- 模式选择 -->
-  <div class="section">
-    <div class="section-title">运行模式</div>
-    <div class="card">
-      <div class="radio-group">
-        <div class="radio-btn active" id="modeHost" data-mode="host">本机当服务器</div>
-        <div class="radio-btn" id="modeClient" data-mode="client">连接远程服务器</div>
+  <!-- 筛选标签 -->
+  <div class="filter-tabs">
+    <button class="tab active" data-filter="all">全部</button>
+    <button class="tab" data-filter="text">文本</button>
+    <button class="tab" data-filter="image">图像</button>
+  </div>
+
+  <!-- 历史记录列表 -->
+  <div class="history-list" id="historyList">
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">📋</div>
+      <div class="empty-text">暂无剪贴板记录</div>
+      <div class="empty-hint">复制内容后将自动显示在这里</div>
+    </div>
+  </div>
+
+  <!-- 设置面板（覆盖层） -->
+  <div class="settings-overlay" id="settingsOverlay">
+    <div class="settings-panel">
+      <div class="settings-header">
+        <h2>设置</h2>
+        <button class="icon-btn" id="settingsCloseBtn">
+          <svg viewBox="0 0 20 20" width="16" height="16">
+            <path fill="currentColor" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"/>
+          </svg>
+        </button>
       </div>
 
-      <div class="input-group" id="serverUrlGroup" style="display:none">
-        <label>服务器地址</label>
-        <input type="text" id="serverUrl" placeholder="http://192.168.1.100:3846">
+      <div class="settings-body">
+        <!-- 连接状态 -->
+        <div class="setting-section">
+          <div class="section-label">连接状态</div>
+          <div class="status-bar">
+            <div class="status-dot" id="statusDot"></div>
+            <div class="status-text" id="statusText">未连接</div>
+            <div class="status-device" id="statusDevice"></div>
+          </div>
+        </div>
+
+        <!-- 模式选择 -->
+        <div class="setting-section">
+          <div class="section-label">运行模式</div>
+          <div class="setting-card">
+            <div class="radio-group">
+              <div class="radio-btn active" id="modeHost" data-mode="host">本机当服务器</div>
+              <div class="radio-btn" id="modeClient" data-mode="client">连接远程服务器</div>
+            </div>
+            <div class="input-group" id="serverUrlGroup" style="display:none">
+              <label>服务器地址</label>
+              <input type="text" id="serverUrl" placeholder="http://192.168.1.100:3846">
+            </div>
+            <div class="input-group" id="portGroup">
+              <label>端口号</label>
+              <input type="number" id="port" value="3846" min="1" max="65535">
+            </div>
+          </div>
+        </div>
+
+        <!-- 开机自启 -->
+        <div class="setting-section">
+          <div class="setting-row">
+            <span>开机自动启动</span>
+            <label class="switch">
+              <input type="checkbox" id="autoLaunch">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- 保存按钮 -->
+        <button class="btn-primary" id="saveBtn">保存并应用</button>
+
+        <!-- 版本 -->
+        <div class="setting-section">
+          <div class="version-row">
+            <span class="version-text" id="versionText">v1.0.0</span>
+            <button class="btn-link" id="checkUpdateBtn">检查更新</button>
+          </div>
+          <div class="update-info" id="updateInfo" style="display:none">
+            <div class="update-badge">发现新版本 <strong id="newVersionText"></strong></div>
+            <div class="update-notes" id="updateNotes"></div>
+            <button class="btn-primary btn-sm" id="downloadBtn">前往下载</button>
+          </div>
+        </div>
       </div>
-
-      <div class="input-group" id="portGroup">
-        <label>端口号</label>
-        <input type="number" id="port" value="3846" min="1" max="65535">
-      </div>
-    </div>
-  </div>
-
-  <!-- 开机自启 -->
-  <div class="section">
-    <div class="switch-row">
-      <label>开机自动启动</label>
-      <label class="switch">
-        <input type="checkbox" id="autoLaunch">
-        <span class="switch-slider"></span>
-      </label>
-    </div>
-  </div>
-
-  <!-- 保存按钮 -->
-  <div class="section">
-    <button class="btn-primary" id="saveBtn">保存并应用</button>
-  </div>
-
-  <!-- 同步记录 -->
-  <div class="section">
-    <div class="section-title">同步记录</div>
-    <div class="card logs" id="logsWrap">
-      <div style="color:var(--text2); text-align:center; padding:12px 0">暂无记录</div>
-    </div>
-  </div>
-
-  <!-- 版本与更新 -->
-  <div class="section">
-    <div class="version-bar">
-      <span class="version-text" id="versionText">v1.0.0</span>
-      <button class="btn-link" id="checkUpdateBtn">检查更新</button>
-    </div>
-    <div class="update-info" id="updateInfo" style="display:none">
-      <div class="update-badge">发现新版本 <strong id="newVersionText"></strong></div>
-      <div class="update-notes" id="updateNotes"></div>
-      <button class="btn-primary btn-sm" id="downloadBtn">前往下载</button>
     </div>
   </div>
 

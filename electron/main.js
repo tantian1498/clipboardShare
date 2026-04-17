@@ -9,6 +9,7 @@ var BrowserWindow = electron.BrowserWindow;
 var ipcMain = electron.ipcMain;
 var path = require('path');
 
+var electronClipboard = electron.clipboard;
 var trayModule = require('./tray');
 var SyncEngine = require('./sync-engine');
 var EmbeddedServer = require('./server-embed');
@@ -26,6 +27,25 @@ var server = new EmbeddedServer();
 var store = new Store();
 var syncLogs = [];
 var MAX_LOGS = 50;
+
+var clipboardHistory = [];
+var MAX_HISTORY = 100;
+
+function addHistoryEntry(type, data, direction) {
+  var entry = {
+    id: Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+    type: type,
+    data: data,
+    direction: direction,
+    time: new Date().toISOString(),
+    preview: type === 'image' ? '[图片]' : (data.length > 200 ? data.substring(0, 200) : data)
+  };
+  clipboardHistory.unshift(entry);
+  if (clipboardHistory.length > MAX_HISTORY) clipboardHistory.pop();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try { mainWindow.webContents.send('history-update', entry); } catch (_) {}
+  }
+}
 
 // macOS: 窗口隐藏时同时隐藏 Dock 图标
 
@@ -114,6 +134,12 @@ engine.on('pushing', function (msg) {
 
 engine.on('pushed', function (text) {
   addLog('push', text);
+  var isImage = text.indexOf('[图片') === 0;
+  addHistoryEntry(
+    isImage ? 'image' : 'text',
+    isImage ? engine._lastPushedImageData || '' : text,
+    'push'
+  );
 });
 
 engine.on('syncing', function (msg) {
@@ -122,6 +148,12 @@ engine.on('syncing', function (msg) {
 
 engine.on('synced', function (text) {
   addLog('sync', text);
+  var isImage = text.indexOf('[图片') === 0;
+  addHistoryEntry(
+    isImage ? 'image' : 'text',
+    isImage ? engine._lastSyncedImageData || '' : text,
+    'sync'
+  );
 });
 
 engine.on('error', function (err) {
@@ -132,9 +164,11 @@ engine.on('error', function (err) {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 420,
-    height: 560,
-    resizable: false,
+    width: 400,
+    height: 600,
+    minWidth: 320,
+    minHeight: 400,
+    resizable: true,
     show: false,
     frame: true,
     title: 'ClipboardShare',
@@ -236,6 +270,60 @@ ipcMain.handle('get-status', function () {
     deviceId: engine.deviceId,
     logs: syncLogs.slice(0, 20)
   };
+});
+
+ipcMain.handle('get-history', function () {
+  return clipboardHistory.map(function (entry) {
+    if (entry.type === 'image') {
+      return {
+        id: entry.id,
+        type: entry.type,
+        data: entry.data.substring(0, 200),
+        preview: entry.preview,
+        direction: entry.direction,
+        time: entry.time,
+        hasImage: true
+      };
+    }
+    return entry;
+  });
+});
+
+ipcMain.handle('get-history-image', function (_event, id) {
+  for (var i = 0; i < clipboardHistory.length; i++) {
+    if (clipboardHistory[i].id === id) {
+      return clipboardHistory[i].data;
+    }
+  }
+  return null;
+});
+
+ipcMain.handle('copy-history-item', function (_event, id) {
+  for (var i = 0; i < clipboardHistory.length; i++) {
+    if (clipboardHistory[i].id === id) {
+      var entry = clipboardHistory[i];
+      if (entry.type === 'image' && electronClipboard) {
+        var nativeImage = require('electron').nativeImage;
+        var img = nativeImage.createFromBuffer(Buffer.from(entry.data, 'base64'));
+        electronClipboard.writeImage(img);
+      } else if (electronClipboard) {
+        electronClipboard.writeText(entry.data);
+      }
+      engine.ignoreNextClipboardChange = true;
+      return { ok: true };
+    }
+  }
+  return { ok: false };
+});
+
+ipcMain.handle('delete-history-item', function (_event, id) {
+  for (var i = 0; i < clipboardHistory.length; i++) {
+    if (clipboardHistory[i].id === id) {
+      clipboardHistory.splice(i, 1);
+      return { ok: true };
+    }
+  }
+  return { ok: false };
 });
 
 ipcMain.handle('toggle-auto-launch', function (_event, enabled) {

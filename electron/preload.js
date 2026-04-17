@@ -36,5 +36,22 @@ contextBridge.exposeInMainWorld('clipboardAPI', {
   },
   getAppVersion: function () {
     return ipcRenderer.invoke('get-app-version');
+  },
+  getHistory: function () {
+    return ipcRenderer.invoke('get-history');
+  },
+  getHistoryImage: function (id) {
+    return ipcRenderer.invoke('get-history-image', id);
+  },
+  copyHistoryItem: function (id) {
+    return ipcRenderer.invoke('copy-history-item', id);
+  },
+  deleteHistoryItem: function (id) {
+    return ipcRenderer.invoke('delete-history-item', id);
+  },
+  onHistoryUpdate: function (callback) {
+    ipcRenderer.on('history-update', function (_event, entry) {
+      callback(entry);
+    });
   }
 });

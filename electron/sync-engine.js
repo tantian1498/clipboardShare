@@ -303,6 +303,7 @@ SyncEngine.prototype._pushToServer = function (type, data) {
       self.emit('connected');
     }
     var label = type === 'image' ? '[图片 ' + sizeStr + ']' : data;
+    if (type === 'image') self._lastPushedImageData = data;
     self.emit('pushed', label);
   });
 };
@@ -366,6 +367,7 @@ SyncEngine.prototype._pollServer = function () {
       self.emit('syncing', '正在接收图片 (' + sizeStr + ')...');
     }
 
+    if (type === 'image') self._lastSyncedImageData = content;
     self._writeClipboard(type, content, function (writeErr) {
       if (writeErr) {
         self.ignoreNextClipboardChange = false;
