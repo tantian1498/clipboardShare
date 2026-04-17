@@ -10,6 +10,8 @@ var crypto = require('crypto');
 var childProcess = require('child_process');
 var os = require('os');
 var util = require('util');
+var electronClipboard = null;
+try { electronClipboard = require('electron').clipboard; } catch (_) {}
 
 var CLIPBOARD_POLL_MS = 500;
 var SERVER_POLL_MS = 1000;
@@ -80,6 +82,16 @@ SyncEngine.prototype.stop = function () {
 // ─── 剪贴板操作 ───────────────────────────────────────────
 
 SyncEngine.prototype._readClipboard = function (callback) {
+  if (electronClipboard) {
+    try {
+      var text = electronClipboard.readText() || '';
+      callback(null, text);
+    } catch (e) {
+      callback(e, '');
+    }
+    return;
+  }
+
   var cmd, cmdArgs;
   if (this.platform === 'darwin') {
     cmd = 'pbpaste';
@@ -105,6 +117,16 @@ SyncEngine.prototype._readClipboard = function (callback) {
 };
 
 SyncEngine.prototype._writeClipboard = function (text, callback) {
+  if (electronClipboard) {
+    try {
+      electronClipboard.writeText(text);
+      callback(null);
+    } catch (e) {
+      callback(e);
+    }
+    return;
+  }
+
   var cmd, cmdArgs;
   if (this.platform === 'darwin') {
     cmd = 'pbcopy';

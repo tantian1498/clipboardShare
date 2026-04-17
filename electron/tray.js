@@ -60,6 +60,10 @@ function updateMenu(opts) {
       checked: !!opts.autoLaunch,
       click: function () { if (opts.onToggleAutoLaunch) opts.onToggleAutoLaunch(); }
     },
+    {
+      label: '检查更新',
+      click: function () { if (opts.onCheckUpdate) opts.onCheckUpdate(); }
+    },
     { type: 'separator' },
     {
       label: '退出',

@@ -291,6 +291,70 @@ h1 {
   min-width: 0;
 }
 
+.version-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: var(--bg2);
+  border-radius: var(--radius);
+}
+
+.version-text {
+  font-size: 12px;
+  color: var(--text2);
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 0;
+  -webkit-app-region: no-drag;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+
+.btn-link:disabled {
+  color: var(--text2);
+  cursor: default;
+  text-decoration: none;
+}
+
+.update-info {
+  margin-top: 8px;
+  padding: 12px 14px;
+  background: rgba(52, 199, 89, 0.08);
+  border: 1px solid rgba(52, 199, 89, 0.2);
+  border-radius: var(--radius);
+}
+
+.update-badge {
+  font-size: 13px;
+  color: var(--success);
+  margin-bottom: 6px;
+}
+
+.update-notes {
+  font-size: 12px;
+  color: var(--text2);
+  margin-bottom: 10px;
+  white-space: pre-wrap;
+  max-height: 60px;
+  overflow-y: auto;
+}
+
+.btn-sm {
+  padding: 6px 14px;
+  font-size: 12px;
+  width: auto;
+  display: inline-block;
+}
+
 .toast {
   position: fixed;
   bottom: 20px;

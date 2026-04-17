@@ -24,5 +24,14 @@ contextBridge.exposeInMainWorld('clipboardAPI', {
     ipcRenderer.on('sync-log', function (_event, log) {
       callback(log);
     });
+  },
+  checkUpdate: function () {
+    return ipcRenderer.invoke('check-update');
+  },
+  openReleaseUrl: function (url) {
+    return ipcRenderer.invoke('open-release-url', url);
+  },
+  getAppVersion: function () {
+    return ipcRenderer.invoke('get-app-version');
   }
 });

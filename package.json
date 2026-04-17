@@ -8,7 +8,7 @@
     "agent": "node agent.js",
     "electron": "electron .",
     "build:mac": "electron-builder --mac",
-    "build:win": "electron-builder --win"
+    "build:win": "electron-builder --win --x64"
   },
   "build": {
     "appId": "com.clipboard-share.app",

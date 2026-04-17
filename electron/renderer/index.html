@@ -65,6 +65,19 @@
     </div>
   </div>
 
+  <!-- 版本与更新 -->
+  <div class="section">
+    <div class="version-bar">
+      <span class="version-text" id="versionText">v1.0.0</span>
+      <button class="btn-link" id="checkUpdateBtn">检查更新</button>
+    </div>
+    <div class="update-info" id="updateInfo" style="display:none">
+      <div class="update-badge">发现新版本 <strong id="newVersionText"></strong></div>
+      <div class="update-notes" id="updateNotes"></div>
+      <button class="btn-primary btn-sm" id="downloadBtn">前往下载</button>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
   <script src="app.js"></script>

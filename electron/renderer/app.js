@@ -140,6 +140,47 @@
     }
   });
 
+  // 版本与更新
+  var versionText = document.getElementById('versionText');
+  var checkUpdateBtn = document.getElementById('checkUpdateBtn');
+  var updateInfo = document.getElementById('updateInfo');
+  var newVersionText = document.getElementById('newVersionText');
+  var updateNotes = document.getElementById('updateNotes');
+  var downloadBtn = document.getElementById('downloadBtn');
+  var pendingReleaseUrl = '';
+
+  window.clipboardAPI.getAppVersion().then(function (ver) {
+    if (ver) versionText.textContent = 'v' + ver;
+  });
+
+  checkUpdateBtn.addEventListener('click', function () {
+    checkUpdateBtn.disabled = true;
+    checkUpdateBtn.textContent = '检查中...';
+    window.clipboardAPI.checkUpdate().then(function (result) {
+      checkUpdateBtn.disabled = false;
+      checkUpdateBtn.textContent = '检查更新';
+      if (!result) return;
+      if (result.error) {
+        showToast('检查更新失败');
+        return;
+      }
+      if (!result.hasUpdate) {
+        showToast('已是最新版本');
+        return;
+      }
+      newVersionText.textContent = 'v' + result.latestVersion;
+      updateNotes.textContent = result.notes || '暂无更新说明';
+      pendingReleaseUrl = result.releaseUrl || '';
+      updateInfo.style.display = '';
+    });
+  });
+
+  downloadBtn.addEventListener('click', function () {
+    if (pendingReleaseUrl) {
+      window.clipboardAPI.openReleaseUrl(pendingReleaseUrl);
+    }
+  });
+
   // 保存
   saveBtn.addEventListener('click', function () {
     var config = {

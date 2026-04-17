@@ -13,6 +13,12 @@ var trayModule = require('./tray');
 var SyncEngine = require('./sync-engine');
 var EmbeddedServer = require('./server-embed');
 var Store = require('./store');
+var updater = require('./updater');
+
+process.on('uncaughtException', function (err) {
+  if (err && err.message && err.message.indexOf('write EIO') !== -1) return;
+  console.error('Uncaught:', err);
+});
 
 var mainWindow = null;
 var engine = new SyncEngine();
@@ -32,7 +38,7 @@ function addLog(type, text) {
   syncLogs.unshift(entry);
   if (syncLogs.length > MAX_LOGS) syncLogs.pop();
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('sync-log', entry);
+    try { mainWindow.webContents.send('sync-log', entry); } catch (_) {}
   }
 }
 
@@ -81,10 +87,11 @@ function broadcastStatus() {
     autoLaunch: store.get('autoLaunch'),
     onShowWindow: showWindow,
     onToggleAutoLaunch: toggleAutoLaunch,
+    onCheckUpdate: function () { doCheckUpdate(false); },
     onQuit: quitApp
   });
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('status-changed', status);
+    try { mainWindow.webContents.send('status-changed', status); } catch (_) {}
   }
 }
 
@@ -207,6 +214,47 @@ ipcMain.handle('get-status', function () {
   };
 });
 
+ipcMain.handle('get-app-version', function () {
+  return app.getVersion();
+});
+
+ipcMain.handle('check-update', function () {
+  return doCheckUpdate(false);
+});
+
+ipcMain.handle('open-release-url', function (_event, url) {
+  if (url) electron.shell.openExternal(url);
+});
+
+// ─── 更新检查 ─────────────────────────────────────────────
+
+function doCheckUpdate(silent) {
+  var currentVersion = app.getVersion();
+  return new Promise(function (resolve) {
+    updater.checkForUpdate(currentVersion, function (err, result) {
+      if (err) {
+        if (!silent) addLog('error', '检查更新失败: ' + err.message);
+        resolve({ hasUpdate: false, error: err.message });
+        return;
+      }
+      if (!result) {
+        if (!silent) addLog('info', '当前已是最新版本 v' + currentVersion);
+        resolve({ hasUpdate: false, currentVersion: currentVersion });
+        return;
+      }
+      addLog('info', '发现新版本 v' + result.version);
+      resolve({
+        hasUpdate: true,
+        currentVersion: currentVersion,
+        latestVersion: result.version,
+        notes: result.notes,
+        asset: result.asset,
+        releaseUrl: result.releaseUrl
+      });
+    });
+  });
+}
+
 // ─── 退出 ─────────────────────────────────────────────────
 
 function quitApp() {
@@ -229,12 +277,15 @@ app.whenReady().then(function () {
     autoLaunch: store.get('autoLaunch'),
     onShowWindow: showWindow,
     onToggleAutoLaunch: toggleAutoLaunch,
+    onCheckUpdate: function () { doCheckUpdate(false); },
     onQuit: quitApp
   });
 
   createWindow();
   showWindow();
   startSync();
+
+  setTimeout(function () { doCheckUpdate(true); }, 5000);
 });
 
 app.on('window-all-closed', function (e) {
