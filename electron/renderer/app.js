@@ -119,9 +119,17 @@
     }
   });
 
-  // 实时状态更新
+  // 开机自启 — 点击立即生效
+  autoLaunchInput.addEventListener('change', function () {
+    window.clipboardAPI.toggleAutoLaunch(autoLaunchInput.checked);
+  });
+
+  // 实时状态更新（包括来自托盘的自启变化）
   window.clipboardAPI.onStatusChange(function (status) {
     updateStatus(status);
+    if (status && typeof status.autoLaunch === 'boolean') {
+      autoLaunchInput.checked = status.autoLaunch;
+    }
   });
 
   // 实时日志

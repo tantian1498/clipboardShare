@@ -80,7 +80,8 @@ function broadcastStatus() {
     connected: engine.connected,
     running: engine.running,
     serverRunning: server.running,
-    deviceId: engine.deviceId
+    deviceId: engine.deviceId,
+    autoLaunch: !!store.get('autoLaunch')
   };
   trayModule.updateMenu({
     connected: engine.connected,
@@ -160,17 +161,32 @@ function showWindow() {
 
 // ─── 开机自启 ─────────────────────────────────────────────
 
+function setAutoLaunch(enabled) {
+  try {
+    var settings = { openAtLogin: enabled };
+    if (process.platform === 'win32') {
+      settings.path = process.execPath;
+      settings.args = [];
+    }
+    app.setLoginItemSettings(settings);
+    var result = app.getLoginItemSettings();
+    addLog('info', '开机自启: ' + (result.openAtLogin ? '已开启' : '已关闭'));
+  } catch (e) {
+    addLog('error', '设置开机自启失败: ' + e.message);
+  }
+}
+
 function toggleAutoLaunch() {
   var current = store.get('autoLaunch');
   var next = !current;
   store.set('autoLaunch', next);
-  app.setLoginItemSettings({ openAtLogin: next });
+  setAutoLaunch(next);
   broadcastStatus();
 }
 
 function applyAutoLaunch() {
   var enabled = store.get('autoLaunch');
-  app.setLoginItemSettings({ openAtLogin: !!enabled });
+  setAutoLaunch(!!enabled);
 }
 
 // ─── IPC 处理 ─────────────────────────────────────────────
@@ -192,7 +208,7 @@ ipcMain.handle('save-config', function (_event, config) {
   store.save(config);
 
   if (config.autoLaunch !== oldConfig.autoLaunch) {
-    app.setLoginItemSettings({ openAtLogin: !!config.autoLaunch });
+    setAutoLaunch(!!config.autoLaunch);
   }
 
   if (needRestart) {
@@ -212,6 +228,13 @@ ipcMain.handle('get-status', function () {
     deviceId: engine.deviceId,
     logs: syncLogs.slice(0, 20)
   };
+});
+
+ipcMain.handle('toggle-auto-launch', function (_event, enabled) {
+  store.set('autoLaunch', enabled);
+  setAutoLaunch(enabled);
+  broadcastStatus();
+  return { autoLaunch: enabled };
 });
 
 ipcMain.handle('get-app-version', function () {

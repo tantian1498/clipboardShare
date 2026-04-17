@@ -25,6 +25,9 @@ contextBridge.exposeInMainWorld('clipboardAPI', {
       callback(log);
     });
   },
+  toggleAutoLaunch: function (enabled) {
+    return ipcRenderer.invoke('toggle-auto-launch', enabled);
+  },
   checkUpdate: function () {
     return ipcRenderer.invoke('check-update');
   },
