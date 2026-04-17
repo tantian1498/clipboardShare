@@ -18,7 +18,8 @@ var sharedContent = {
 
 // Agent 同步状态：版本号递增，lastUpdater 记录最后更新的设备 ID
 var syncState = {
-  text: '',
+  type: 'text',   // 'text' | 'image'
+  data: '',        // text: 文本内容; image: base64 PNG
   version: 0,
   lastUpdater: ''
 };
@@ -48,13 +49,12 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 /**
- * 当文本通过任意渠道变更时，同步更新 syncState（网页端 → Agent 可见）
- * @param {string} text - 新文本
- * @param {string} [updater] - 更新者设备 ID，网页端留空用 'web'
+ * 当文本通过网页端变更时，同步更新 syncState
  */
 function updateSyncFromShared(text, updater) {
-  if (syncState.text === text) return;
-  syncState.text = text;
+  if (syncState.type === 'text' && syncState.data === text) return;
+  syncState.type = 'text';
+  syncState.data = text;
   syncState.version += 1;
   syncState.lastUpdater = updater || 'web';
 }
@@ -127,25 +127,36 @@ app.get('/api/sync', function (req, res) {
   }
   res.json({
     changed: true,
-    text: syncState.text,
+    type: syncState.type,
+    data: syncState.data,
+    text: syncState.type === 'text' ? syncState.data : '',
     version: syncState.version,
     lastUpdater: syncState.lastUpdater
   });
 });
 
-// Agent 同步：推送新内容
+// Agent 同步：推送新内容（支持 text / image）
 app.post('/api/sync', function (req, res) {
   var body = req.body;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  if (!body || typeof body.text !== 'string' || typeof body.deviceId !== 'string') {
-    res.status(400).json({ ok: false, error: 'text 和 deviceId 为必填字段' });
+  if (!body || typeof body.deviceId !== 'string') {
+    res.status(400).json({ ok: false, error: 'deviceId 为必填字段' });
     return;
   }
-  if (syncState.text !== body.text) {
-    syncState.text = body.text;
+  var type = body.type || 'text';
+  var data = body.data !== undefined ? body.data : body.text;
+  if (data === undefined || data === null) {
+    res.status(400).json({ ok: false, error: '缺少 data 或 text 字段' });
+    return;
+  }
+  if (syncState.type !== type || syncState.data !== data) {
+    syncState.type = type;
+    syncState.data = data;
     syncState.version += 1;
     syncState.lastUpdater = body.deviceId;
-    sharedContent.text = body.text;
+    if (type === 'text') {
+      sharedContent.text = data;
+    }
   }
   res.json({ ok: true, version: syncState.version });
 });

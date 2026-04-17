@@ -26,6 +26,8 @@ function SyncEngine() {
   this.connected = false;
   this.knownVersion = 0;
   this.lastClipboardText = '';
+  this.lastImageHash = '';
+  this.lastContentType = 'text';
   this.ignoreNextClipboardChange = false;
   this._clipboardTimer = null;
   this._serverTimer = null;
@@ -48,9 +50,11 @@ SyncEngine.prototype.start = function (serverUrl) {
 
   var self = this;
 
-  this._readClipboard(function (err, text) {
-    if (!err) {
-      self.lastClipboardText = text;
+  this._readClipboard(function (err, content) {
+    if (!err && content) {
+      self.lastContentType = content.type;
+      self.lastClipboardText = content.type === 'text' ? content.data : '';
+      self.lastImageHash = content.hash || '';
     }
     self._httpRequest('GET', self.serverUrl + '/api/sync', null, function (syncErr, data) {
       if (!self.running) return;
@@ -81,13 +85,34 @@ SyncEngine.prototype.stop = function () {
 
 // ─── 剪贴板操作 ───────────────────────────────────────────
 
+/**
+ * 计算图片数据的快速哈希（用于变化检测，避免比较完整 base64）
+ */
+SyncEngine.prototype._imageHash = function (nativeImage) {
+  if (!nativeImage || nativeImage.isEmpty()) return '';
+  var size = nativeImage.getSize();
+  var buf = nativeImage.toBitmap();
+  var sample = buf.length > 1024 ? buf.slice(0, 512).toString('hex') + buf.slice(-512).toString('hex') : buf.toString('hex');
+  return size.width + 'x' + size.height + ':' + crypto.createHash('md5').update(sample).digest('hex');
+};
+
+/**
+ * 读取剪贴板内容，返回 { type: 'text'|'image', data: string }
+ */
 SyncEngine.prototype._readClipboard = function (callback) {
   if (electronClipboard) {
     try {
+      var img = electronClipboard.readImage();
+      if (img && !img.isEmpty()) {
+        var hash = this._imageHash(img);
+        var base64 = img.toPNG().toString('base64');
+        callback(null, { type: 'image', data: base64, hash: hash });
+        return;
+      }
       var text = electronClipboard.readText() || '';
-      callback(null, text);
+      callback(null, { type: 'text', data: text, hash: '' });
     } catch (e) {
-      callback(e, '');
+      callback(e, null);
     }
     return;
   }
@@ -108,22 +133,38 @@ SyncEngine.prototype._readClipboard = function (callback) {
   }
 
   var child = childProcess.execFile(cmd, cmdArgs, { encoding: 'utf8', timeout: 3000 }, function (err, stdout) {
-    if (err) return callback(err, '');
+    if (err) return callback(err, null);
     var text = stdout.replace(/\r\n$/, '').replace(/\n$/, '');
-    callback(null, text);
+    callback(null, { type: 'text', data: text, hash: '' });
   });
 
   if (child.stdin) child.stdin.end();
 };
 
-SyncEngine.prototype._writeClipboard = function (text, callback) {
+/**
+ * 写入剪贴板内容
+ * @param {string} type - 'text' | 'image'
+ * @param {string} data - 文本内容或 base64 PNG
+ */
+SyncEngine.prototype._writeClipboard = function (type, data, callback) {
   if (electronClipboard) {
     try {
-      electronClipboard.writeText(text);
+      if (type === 'image') {
+        var nativeImage = require('electron').nativeImage;
+        var img = nativeImage.createFromBuffer(Buffer.from(data, 'base64'));
+        electronClipboard.writeImage(img);
+      } else {
+        electronClipboard.writeText(data);
+      }
       callback(null);
     } catch (e) {
       callback(e);
     }
+    return;
+  }
+
+  if (type === 'image') {
+    callback(new Error('非 Electron 环境不支持图片同步'));
     return;
   }
 
@@ -146,7 +187,7 @@ SyncEngine.prototype._writeClipboard = function (text, callback) {
     callback(err || null);
   });
 
-  child.stdin.write(text);
+  child.stdin.write(data);
   child.stdin.end();
 };
 
@@ -190,7 +231,7 @@ SyncEngine.prototype._httpRequest = function (method, reqUrl, body, callback) {
   });
 
   req.on('error', function (err) { callback(err, null); });
-  req.setTimeout(5000, function () { req.destroy(new Error('请求超时')); });
+  req.setTimeout(30000, function () { req.destroy(new Error('请求超时')); });
 
   if (postData) req.write(postData);
   req.end();
@@ -202,16 +243,28 @@ SyncEngine.prototype._pollClipboard = function () {
   var self = this;
   if (!self.running) return;
 
-  self._readClipboard(function (err, text) {
+  self._readClipboard(function (err, content) {
     if (!self.running) return;
 
-    if (!err) {
+    if (!err && content) {
       if (self.ignoreNextClipboardChange) {
         self.ignoreNextClipboardChange = false;
-        self.lastClipboardText = text;
-      } else if (text !== self.lastClipboardText) {
-        self.lastClipboardText = text;
-        self._pushToServer(text);
+        self.lastContentType = content.type;
+        self.lastClipboardText = content.type === 'text' ? content.data : '';
+        self.lastImageHash = content.hash || '';
+      } else {
+        var changed = false;
+        if (content.type === 'image') {
+          changed = content.hash !== self.lastImageHash;
+        } else {
+          changed = content.data !== self.lastClipboardText;
+        }
+        if (changed) {
+          self.lastContentType = content.type;
+          self.lastClipboardText = content.type === 'text' ? content.data : '';
+          self.lastImageHash = content.hash || '';
+          self._pushToServer(content.type, content.data);
+        }
       }
     }
 
@@ -221,22 +274,23 @@ SyncEngine.prototype._pollClipboard = function () {
   });
 };
 
-SyncEngine.prototype._pushToServer = function (text) {
+SyncEngine.prototype._pushToServer = function (type, data) {
   var self = this;
   var pushUrl = self.serverUrl + '/api/sync';
-  self._httpRequest('POST', pushUrl, { text: text, deviceId: self.deviceId }, function (err, data) {
+  var label = type === 'image' ? '[图片]' : data;
+  self._httpRequest('POST', pushUrl, { type: type, data: data, deviceId: self.deviceId }, function (err, respData) {
     if (err) {
       self.emit('error', err);
       return;
     }
-    if (data && typeof data.version === 'number') {
-      self.knownVersion = data.version;
+    if (respData && typeof respData.version === 'number') {
+      self.knownVersion = respData.version;
     }
     if (!self.connected) {
       self.connected = true;
       self.emit('connected');
     }
-    self.emit('pushed', text);
+    self.emit('pushed', label);
   });
 };
 
@@ -269,20 +323,37 @@ SyncEngine.prototype._pollServer = function () {
 
     self.knownVersion = data.version;
 
-    if (data.lastUpdater === self.deviceId || data.text === self.lastClipboardText) {
+    if (data.lastUpdater === self.deviceId) {
+      self._serverTimer = setTimeout(function () { self._pollServer(); }, SERVER_POLL_MS);
+      return;
+    }
+
+    var type = data.type || 'text';
+    var content = data.data !== undefined ? data.data : data.text;
+
+    if (type === 'text' && content === self.lastClipboardText) {
       self._serverTimer = setTimeout(function () { self._pollServer(); }, SERVER_POLL_MS);
       return;
     }
 
     self.ignoreNextClipboardChange = true;
-    self.lastClipboardText = data.text;
+    if (type === 'text') {
+      self.lastClipboardText = content;
+      self.lastImageHash = '';
+    } else {
+      self.lastClipboardText = '';
+      self.lastImageHash = crypto.createHash('md5').update(content.slice(0, 1024)).digest('hex');
+    }
+    self.lastContentType = type;
 
-    self._writeClipboard(data.text, function (writeErr) {
+    var label = type === 'image' ? '[图片]' : content;
+
+    self._writeClipboard(type, content, function (writeErr) {
       if (writeErr) {
         self.ignoreNextClipboardChange = false;
         self.emit('error', writeErr);
       } else {
-        self.emit('synced', data.text);
+        self.emit('synced', label);
       }
       self._serverTimer = setTimeout(function () { self._pollServer(); }, SERVER_POLL_MS);
     });
