@@ -83,7 +83,7 @@ fi
 # ── 打包 Windows ──────────────────────────────────────────
 log "打包 Windows 版..."
 npm run build:win 2>&1 | tail -5
-WIN_EXE=$(ls dist/*.exe 2>/dev/null | head -1)
+WIN_EXE=$(find dist -maxdepth 1 -name "*.exe" ! -name "*uninstall*" 2>/dev/null | head -1)
 if [ -z "$WIN_EXE" ]; then
   warn "Windows .exe 未生成，跳过"
 else
@@ -110,10 +110,6 @@ git push origin HEAD 2>/dev/null || warn "push 失败，请手动 push"
 # ── 创建 GitHub Release ───────────────────────────────────
 log "创建 GitHub Release: $TAG"
 
-ASSETS=""
-if [ -n "$MAC_DMG" ]; then ASSETS="$ASSETS $MAC_DMG"; fi
-if [ -n "$WIN_EXE" ]; then ASSETS="$ASSETS $WIN_EXE"; fi
-
 RELEASE_NOTES="## ClipboardShare $TAG
 
 ### 安装方式
@@ -126,9 +122,21 @@ RELEASE_NOTES="## ClipboardShare $TAG
 - 系统托盘常驻，开机自启
 - 应用内检查更新"
 
-gh release create "$TAG" $ASSETS \
-  --title "ClipboardShare $TAG" \
-  --notes "$RELEASE_NOTES"
+GH_ARGS="--title \"ClipboardShare $TAG\" --notes \"$RELEASE_NOTES\""
+
+if [ -n "$MAC_DMG" ] && [ -n "$WIN_EXE" ]; then
+  gh release create "$TAG" "$MAC_DMG" "$WIN_EXE" \
+    --title "ClipboardShare $TAG" \
+    --notes "$RELEASE_NOTES"
+elif [ -n "$MAC_DMG" ]; then
+  gh release create "$TAG" "$MAC_DMG" \
+    --title "ClipboardShare $TAG" \
+    --notes "$RELEASE_NOTES"
+elif [ -n "$WIN_EXE" ]; then
+  gh release create "$TAG" "$WIN_EXE" \
+    --title "ClipboardShare $TAG" \
+    --notes "$RELEASE_NOTES"
+fi
 
 ok "Release 创建成功！"
 
