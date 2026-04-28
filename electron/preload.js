@@ -53,5 +53,10 @@ contextBridge.exposeInMainWorld('clipboardAPI', {
     ipcRenderer.on('history-update', function (_event, entry) {
       callback(entry);
     });
+  },
+  onHistoryLoaded: function (callback) {
+    ipcRenderer.on('history-loaded', function (_event, data) {
+      callback(data);
+    });
   }
 });

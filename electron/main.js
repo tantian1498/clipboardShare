@@ -8,6 +8,7 @@ var app = electron.app;
 var BrowserWindow = electron.BrowserWindow;
 var ipcMain = electron.ipcMain;
 var path = require('path');
+var http = require('http');
 
 var electronClipboard = electron.clipboard;
 var trayModule = require('./tray');
@@ -29,7 +30,70 @@ var syncLogs = [];
 var MAX_LOGS = 50;
 
 var clipboardHistory = [];
-var MAX_HISTORY = 100;
+
+function simpleGet(url, callback) {
+  var parsed = new URL(url);
+  var req = http.get({
+    hostname: parsed.hostname,
+    port: parsed.port || 80,
+    path: parsed.pathname + parsed.search,
+    timeout: 5000
+  }, function (res) {
+    var chunks = [];
+    res.setEncoding('utf8');
+    res.on('data', function (c) { chunks.push(c); });
+    res.on('end', function () {
+      try { callback(null, JSON.parse(chunks.join(''))); }
+      catch (e) { callback(e, null); }
+    });
+  });
+  req.on('error', function (e) { callback(e, null); });
+  req.on('timeout', function () { req.destroy(); callback(new Error('timeout'), null); });
+}
+
+function simpleDelete(url, callback) {
+  var parsed = new URL(url);
+  var req = http.request({
+    hostname: parsed.hostname,
+    port: parsed.port || 80,
+    path: parsed.pathname,
+    method: 'DELETE',
+    timeout: 5000
+  }, function (res) {
+    var chunks = [];
+    res.setEncoding('utf8');
+    res.on('data', function (c) { chunks.push(c); });
+    res.on('end', function () {
+      try { callback(null, JSON.parse(chunks.join(''))); }
+      catch (e) { callback(e, null); }
+    });
+  });
+  req.on('error', function (e) { callback(e, null); });
+  req.end();
+}
+
+function loadHistoryFromServer() {
+  var config = store.getAll();
+  var serverUrl = getEffectiveServerUrl(config);
+  if (!serverUrl) return;
+  simpleGet(serverUrl + '/api/history', function (err, data) {
+    if (err || !Array.isArray(data)) return;
+    clipboardHistory = data.map(function (entry) {
+      return {
+        id: entry.id,
+        type: entry.type,
+        data: entry.data || '',
+        preview: entry.preview || '',
+        direction: entry.direction === engine.deviceId ? 'push' : 'sync',
+        time: entry.time,
+        hasImage: entry.hasImage
+      };
+    });
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      try { mainWindow.webContents.send('history-loaded', clipboardHistory); } catch (_) {}
+    }
+  });
+}
 
 function addHistoryEntry(type, data, direction) {
   var entry = {
@@ -41,7 +105,7 @@ function addHistoryEntry(type, data, direction) {
     preview: type === 'image' ? '[图片]' : (data.length > 200 ? data.substring(0, 200) : data)
   };
   clipboardHistory.unshift(entry);
-  if (clipboardHistory.length > MAX_HISTORY) clipboardHistory.pop();
+  if (clipboardHistory.length > 100) clipboardHistory.pop();
   if (mainWindow && !mainWindow.isDestroyed()) {
     try { mainWindow.webContents.send('history-update', entry); } catch (_) {}
   }
@@ -121,6 +185,7 @@ function broadcastStatus() {
 engine.on('connected', function () {
   addLog('info', '已连接到服务器');
   broadcastStatus();
+  loadHistoryFromServer();
 });
 
 engine.on('disconnected', function () {
@@ -292,10 +357,26 @@ ipcMain.handle('get-history', function () {
 ipcMain.handle('get-history-image', function (_event, id) {
   for (var i = 0; i < clipboardHistory.length; i++) {
     if (clipboardHistory[i].id === id) {
-      return clipboardHistory[i].data;
+      if (clipboardHistory[i].data && clipboardHistory[i].data.length > 200) {
+        return clipboardHistory[i].data;
+      }
     }
   }
-  return null;
+  return new Promise(function (resolve) {
+    var config = store.getAll();
+    var serverUrl = getEffectiveServerUrl(config);
+    if (!serverUrl) { resolve(null); return; }
+    simpleGet(serverUrl + '/api/history/' + id, function (err, data) {
+      if (err || !data || !data.data) { resolve(null); return; }
+      for (var j = 0; j < clipboardHistory.length; j++) {
+        if (clipboardHistory[j].id === id) {
+          clipboardHistory[j].data = data.data;
+          break;
+        }
+      }
+      resolve(data.data);
+    });
+  });
 });
 
 ipcMain.handle('copy-history-item', function (_event, id) {
@@ -320,6 +401,9 @@ ipcMain.handle('delete-history-item', function (_event, id) {
   for (var i = 0; i < clipboardHistory.length; i++) {
     if (clipboardHistory[i].id === id) {
       clipboardHistory.splice(i, 1);
+      var config = store.getAll();
+      var serverUrl = getEffectiveServerUrl(config);
+      if (serverUrl) simpleDelete(serverUrl + '/api/history/' + id, function () {});
       return { ok: true };
     }
   }

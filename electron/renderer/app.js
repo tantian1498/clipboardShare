@@ -215,6 +215,11 @@
     renderHistory();
   });
 
+  window.clipboardAPI.onHistoryLoaded(function (data) {
+    historyData = data || [];
+    renderHistory();
+  });
+
   // ─── 状态更新 ──────────────────────────────────────────
 
   function updateStatus(status) {

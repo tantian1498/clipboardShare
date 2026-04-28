@@ -5,6 +5,7 @@
 var express = require('express');
 var path = require('path');
 var os = require('os');
+var fs = require('fs');
 
 var app = express();
 var PORT = process.env.PORT || 3846;
@@ -23,6 +24,29 @@ var syncState = {
   version: 0,
   lastUpdater: ''
 };
+
+// ─── 历史记录持久化 ────────────────────────────────────────────
+var MAX_HISTORY = 100;
+var historyData = [];
+var historyFile = path.join(__dirname, 'history.json');
+
+function loadHistory() {
+  try {
+    if (fs.existsSync(historyFile)) {
+      var raw = fs.readFileSync(historyFile, 'utf8');
+      var parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) historyData = parsed.slice(0, MAX_HISTORY);
+    }
+  } catch (e) { historyData = []; }
+}
+
+function saveHistory() {
+  try {
+    fs.writeFileSync(historyFile, JSON.stringify(historyData), 'utf8');
+  } catch (e) {}
+}
+
+loadHistory();
 
 /**
  * 获取本机局域网 IPv4 地址列表（排除回环）
@@ -157,8 +181,62 @@ app.post('/api/sync', function (req, res) {
     if (type === 'text') {
       sharedContent.text = data;
     }
+    historyData.unshift({
+      id: Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+      type: type,
+      data: data,
+      direction: body.deviceId,
+      time: new Date().toISOString(),
+      preview: type === 'image' ? '[图片]' : (data.length > 200 ? data.substring(0, 200) : data)
+    });
+    if (historyData.length > MAX_HISTORY) historyData.pop();
+    saveHistory();
   }
   res.json({ ok: true, version: syncState.version });
+});
+
+// Agent 同步：获取历史记录
+app.get('/api/history', function (req, res) {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.json(historyData.map(function (entry) {
+    if (entry.type === 'image') {
+      return {
+        id: entry.id,
+        type: entry.type,
+        data: entry.data.substring(0, 200),
+        preview: entry.preview,
+        direction: entry.direction,
+        time: entry.time,
+        hasImage: true
+      };
+    }
+    return entry;
+  }));
+});
+
+// Agent 同步：获取历史图片完整数据
+app.get('/api/history/:id', function (req, res) {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  for (var i = 0; i < historyData.length; i++) {
+    if (historyData[i].id === req.params.id) {
+      res.json({ data: historyData[i].data });
+      return;
+    }
+  }
+  res.status(404).json({ error: 'not found' });
+});
+
+// Agent 同步：删除历史记录
+app.delete('/api/history/:id', function (req, res) {
+  for (var i = 0; i < historyData.length; i++) {
+    if (historyData[i].id === req.params.id) {
+      historyData.splice(i, 1);
+      saveHistory();
+      res.json({ ok: true });
+      return;
+    }
+  }
+  res.status(404).json({ error: 'not found' });
 });
 
 // 前端页面

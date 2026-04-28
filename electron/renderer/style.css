@@ -294,7 +294,7 @@ body {
   display: none;
   position: absolute;
   right: 10px;
-  top: 10px;
+  bottom: 10px;
   gap: 4px;
 }
 
