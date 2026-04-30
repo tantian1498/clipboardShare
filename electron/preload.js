@@ -49,6 +49,9 @@ contextBridge.exposeInMainWorld('clipboardAPI', {
   deleteHistoryItem: function (id) {
     return ipcRenderer.invoke('delete-history-item', id);
   },
+  deleteHistoryItems: function (ids) {
+    return ipcRenderer.invoke('delete-history-items', ids);
+  },
   onHistoryUpdate: function (callback) {
     ipcRenderer.on('history-update', function (_event, entry) {
       callback(entry);

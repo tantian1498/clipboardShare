@@ -51,6 +51,34 @@ function simpleGet(url, callback) {
   req.on('timeout', function () { req.destroy(); callback(new Error('timeout'), null); });
 }
 
+function simplePost(url, body, callback) {
+  var parsed = new URL(url);
+  var postData = JSON.stringify(body);
+  var req = http.request({
+    hostname: parsed.hostname,
+    port: parsed.port || 80,
+    path: parsed.pathname,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(postData)
+    },
+    timeout: 5000
+  }, function (res) {
+    var chunks = [];
+    res.setEncoding('utf8');
+    res.on('data', function (c) { chunks.push(c); });
+    res.on('end', function () {
+      try { callback(null, JSON.parse(chunks.join(''))); }
+      catch (e) { callback(e, null); }
+    });
+  });
+  req.on('error', function (e) { callback(e, null); });
+  req.on('timeout', function () { req.destroy(); callback(new Error('timeout'), null); });
+  req.write(postData);
+  req.end();
+}
+
 function simpleDelete(url, callback) {
   var parsed = new URL(url);
   var req = http.request({
@@ -223,6 +251,10 @@ engine.on('synced', function (text) {
 
 engine.on('error', function (err) {
   addLog('error', err.message || '未知错误');
+});
+
+engine.on('history-deleted', function () {
+  loadHistoryFromServer();
 });
 
 // ─── 窗口管理 ─────────────────────────────────────────────
@@ -408,6 +440,19 @@ ipcMain.handle('delete-history-item', function (_event, id) {
     }
   }
   return { ok: false };
+});
+
+ipcMain.handle('delete-history-items', function (_event, ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return { ok: false };
+  var idSet = {};
+  for (var i = 0; i < ids.length; i++) idSet[ids[i]] = true;
+  clipboardHistory = clipboardHistory.filter(function (entry) {
+    return !idSet[entry.id];
+  });
+  var config = store.getAll();
+  var serverUrl = getEffectiveServerUrl(config);
+  if (serverUrl) simplePost(serverUrl + '/api/history/batch-delete', { ids: ids }, function () {});
+  return { ok: true };
 });
 
 ipcMain.handle('toggle-auto-launch', function (_event, enabled) {

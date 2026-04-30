@@ -22,7 +22,8 @@ var syncState = {
   type: 'text',   // 'text' | 'image'
   data: '',        // text: 文本内容; image: base64 PNG
   version: 0,
-  lastUpdater: ''
+  lastUpdater: '',
+  deleteVersion: 0
 };
 
 // ─── 历史记录持久化 ────────────────────────────────────────────
@@ -146,7 +147,7 @@ app.get('/api/sync', function (req, res) {
   var since = parseInt(req.query.since, 10);
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   if (!isNaN(since) && since >= syncState.version) {
-    res.json({ changed: false, version: syncState.version });
+    res.json({ changed: false, version: syncState.version, deleteVersion: syncState.deleteVersion });
     return;
   }
   res.json({
@@ -155,7 +156,8 @@ app.get('/api/sync', function (req, res) {
     data: syncState.data,
     text: syncState.type === 'text' ? syncState.data : '',
     version: syncState.version,
-    lastUpdater: syncState.lastUpdater
+    lastUpdater: syncState.lastUpdater,
+    deleteVersion: syncState.deleteVersion
   });
 });
 
@@ -226,12 +228,31 @@ app.get('/api/history/:id', function (req, res) {
   res.status(404).json({ error: 'not found' });
 });
 
+// Agent 同步：批量删除历史记录
+app.post('/api/history/batch-delete', function (req, res) {
+  var ids = req.body && req.body.ids;
+  if (!Array.isArray(ids)) {
+    res.status(400).json({ error: 'ids must be an array' });
+    return;
+  }
+  var idSet = {};
+  for (var k = 0; k < ids.length; k++) idSet[ids[k]] = true;
+  var before = historyData.length;
+  historyData = historyData.filter(function (entry) { return !idSet[entry.id]; });
+  if (historyData.length < before) {
+    saveHistory();
+    syncState.deleteVersion += 1;
+  }
+  res.json({ ok: true, deleted: before - historyData.length });
+});
+
 // Agent 同步：删除历史记录
 app.delete('/api/history/:id', function (req, res) {
   for (var i = 0; i < historyData.length; i++) {
     if (historyData[i].id === req.params.id) {
       historyData.splice(i, 1);
       saveHistory();
+      syncState.deleteVersion += 1;
       res.json({ ok: true });
       return;
     }

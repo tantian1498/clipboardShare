@@ -177,6 +177,10 @@ body {
   padding: 0 16px 16px;
 }
 
+.history-list.with-batch {
+  padding-bottom: 60px;
+}
+
 .history-list::-webkit-scrollbar {
   width: 6px;
 }
@@ -614,6 +618,119 @@ body {
   white-space: pre-wrap;
   max-height: 50px;
   overflow-y: auto;
+}
+
+/* ─── 编辑按钮 ────────────────────────────────────────────── */
+
+.icon-btn.text-btn {
+  font-size: 12px;
+  width: auto;
+  padding: 0 8px;
+}
+
+/* ─── 批量操作栏 ──────────────────────────────────────────── */
+
+.batch-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  padding: 10px 16px;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  z-index: 40;
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
+}
+
+.batch-bar.show {
+  display: flex;
+}
+
+.batch-count {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text2);
+}
+
+.batch-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.batch-btn-select {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.batch-btn-select:hover {
+  background: var(--bg-card-hover);
+}
+
+.batch-btn-delete {
+  background: var(--danger);
+  color: white;
+}
+
+.batch-btn-delete:hover {
+  opacity: 0.9;
+}
+
+.batch-btn-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── 卡片选择态 ──────────────────────────────────────────── */
+
+.card-checkbox {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--bg-card);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+  transition: border-color 0.15s, background 0.15s;
+  pointer-events: none;
+}
+
+.history-card.editing .card-checkbox {
+  display: flex;
+}
+
+.history-card.editing .card-actions {
+  display: none !important;
+}
+
+.history-card.editing {
+  padding-left: 40px;
+}
+
+.history-card.checked .card-checkbox {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.history-card.checked .card-checkbox::after {
+  content: '';
+  width: 6px;
+  height: 10px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  margin-top: -2px;
 }
 
 /* ─── Toast ──────────────────────────────────────────────── */

@@ -29,6 +29,7 @@ function SyncEngine() {
   this.lastImageHash = '';
   this.lastContentType = 'text';
   this.ignoreNextClipboardChange = false;
+  this.knownDeleteVersion = 0;
   this._clipboardTimer = null;
   this._serverTimer = null;
 }
@@ -328,6 +329,13 @@ SyncEngine.prototype._pollServer = function () {
     if (!self.connected) {
       self.connected = true;
       self.emit('connected');
+    }
+
+    if (data && typeof data.deleteVersion === 'number' && data.deleteVersion !== self.knownDeleteVersion) {
+      if (self.knownDeleteVersion !== 0) {
+        self.emit('history-deleted');
+      }
+      self.knownDeleteVersion = data.deleteVersion;
     }
 
     if (!data || !data.changed) {

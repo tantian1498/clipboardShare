@@ -12,6 +12,11 @@
   var historyList = document.getElementById('historyList');
   var emptyState = document.getElementById('emptyState');
   var toastEl = document.getElementById('toast');
+  var editBtn = document.getElementById('editBtn');
+  var batchBar = document.getElementById('batchBar');
+  var batchCount = document.getElementById('batchCount');
+  var batchSelectAllBtn = document.getElementById('batchSelectAllBtn');
+  var batchDeleteBtn = document.getElementById('batchDeleteBtn');
 
   var modeHostBtn = document.getElementById('modeHost');
   var modeClientBtn = document.getElementById('modeClient');
@@ -37,7 +42,11 @@
   var currentFilter = 'all';
   var searchQuery = '';
   var historyData = [];
+  var filteredData = [];
   var pendingReleaseUrl = '';
+  var isEditMode = false;
+  var selectedIds = {};
+  var lastClickedIndex = -1;
 
   // ─── 工具函数 ──────────────────────────────────────────
 
@@ -97,10 +106,16 @@
     });
   }
 
-  function createCard(entry) {
+  function createCard(entry, filteredIndex) {
     var card = document.createElement('div');
-    card.className = 'history-card';
+    var classes = 'history-card';
+    if (isEditMode) classes += ' editing';
+    if (selectedIds[entry.id]) classes += ' checked';
+    card.className = classes;
     card.setAttribute('data-id', entry.id);
+    card.setAttribute('data-index', filteredIndex);
+
+    var checkboxHtml = '<div class="card-checkbox"></div>';
 
     var dirLabel = entry.direction === 'push' ? '推送' : '接收';
     var dirClass = entry.direction === 'push' ? 'push' : 'sync';
@@ -130,59 +145,158 @@
         '<button class="card-action-btn danger delete-btn" title="删除">🗑</button>' +
       '</div>';
 
-    card.innerHTML = headerHtml + contentHtml + actionsHtml;
+    card.innerHTML = checkboxHtml + headerHtml + contentHtml + actionsHtml;
 
-    card.querySelector('.copy-btn').addEventListener('click', function (e) {
-      e.stopPropagation();
-      window.clipboardAPI.copyHistoryItem(entry.id).then(function () {
-        showToast('已复制到剪贴板');
-      });
-    });
-
-    card.querySelector('.delete-btn').addEventListener('click', function (e) {
-      e.stopPropagation();
-      window.clipboardAPI.deleteHistoryItem(entry.id).then(function () {
-        for (var k = 0; k < historyData.length; k++) {
-          if (historyData[k].id === entry.id) {
-            historyData.splice(k, 1);
-            break;
+    if (isEditMode) {
+      card.addEventListener('click', function (e) {
+        if (e.shiftKey && lastClickedIndex >= 0) {
+          var from = Math.min(lastClickedIndex, filteredIndex);
+          var to = Math.max(lastClickedIndex, filteredIndex);
+          for (var s = from; s <= to; s++) {
+            selectedIds[filteredData[s].id] = true;
+          }
+        } else {
+          if (selectedIds[entry.id]) {
+            delete selectedIds[entry.id];
+          } else {
+            selectedIds[entry.id] = true;
           }
         }
+        lastClickedIndex = filteredIndex;
         renderHistory();
       });
-    });
-
-    card.addEventListener('click', function () {
-      window.clipboardAPI.copyHistoryItem(entry.id).then(function () {
-        showToast('已复制到剪贴板');
+    } else {
+      card.querySelector('.copy-btn').addEventListener('click', function (e) {
+        e.stopPropagation();
+        window.clipboardAPI.copyHistoryItem(entry.id).then(function () {
+          showToast('已复制到剪贴板');
+        });
       });
-    });
+
+      card.querySelector('.delete-btn').addEventListener('click', function (e) {
+        e.stopPropagation();
+        window.clipboardAPI.deleteHistoryItem(entry.id).then(function () {
+          for (var k = 0; k < historyData.length; k++) {
+            if (historyData[k].id === entry.id) {
+              historyData.splice(k, 1);
+              break;
+            }
+          }
+          renderHistory();
+        });
+      });
+
+      card.addEventListener('click', function () {
+        window.clipboardAPI.copyHistoryItem(entry.id).then(function () {
+          showToast('已复制到剪贴板');
+        });
+      });
+    }
 
     return card;
   }
 
   function renderHistory() {
-    var filtered = filterEntries();
+    filteredData = filterEntries();
 
     while (historyList.firstChild) {
       historyList.removeChild(historyList.firstChild);
     }
 
-    if (filtered.length === 0) {
+    if (filteredData.length === 0) {
       historyList.appendChild(emptyState);
       emptyState.style.display = '';
-      return;
+    } else {
+      emptyState.style.display = 'none';
+      for (var i = 0; i < filteredData.length; i++) {
+        var card = createCard(filteredData[i], i);
+        historyList.appendChild(card);
+      }
+      loadLazyImages();
     }
 
-    emptyState.style.display = 'none';
-
-    for (var i = 0; i < filtered.length; i++) {
-      var card = createCard(filtered[i]);
-      historyList.appendChild(card);
-    }
-
-    loadLazyImages();
+    updateBatchBar();
   }
+
+  // ─── 批量选择 ──────────────────────────────────────────
+
+  function enterEditMode() {
+    isEditMode = true;
+    selectedIds = {};
+    lastClickedIndex = -1;
+    editBtn.textContent = '取消';
+    editBtn.title = '取消选择';
+    batchBar.classList.add('show');
+    historyList.classList.add('with-batch');
+    settingsBtn.style.display = 'none';
+    renderHistory();
+  }
+
+  function exitEditMode() {
+    isEditMode = false;
+    selectedIds = {};
+    lastClickedIndex = -1;
+    editBtn.textContent = '选择';
+    editBtn.title = '批量选择';
+    batchBar.classList.remove('show');
+    historyList.classList.remove('with-batch');
+    settingsBtn.style.display = '';
+    renderHistory();
+  }
+
+  editBtn.addEventListener('click', function () {
+    if (isEditMode) exitEditMode();
+    else enterEditMode();
+  });
+
+  function getSelectedCount() {
+    var count = 0;
+    for (var key in selectedIds) {
+      if (selectedIds[key]) count++;
+    }
+    return count;
+  }
+
+  function updateBatchBar() {
+    if (!isEditMode) return;
+    var count = getSelectedCount();
+    batchCount.textContent = '已选择 ' + count + ' 项';
+    batchDeleteBtn.disabled = count === 0;
+    batchDeleteBtn.textContent = count > 0 ? '删除 (' + count + ')' : '删除';
+    var allSelected = filteredData.length > 0 && count === filteredData.length;
+    batchSelectAllBtn.textContent = allSelected ? '取消全选' : '全选';
+  }
+
+  batchSelectAllBtn.addEventListener('click', function () {
+    var allSelected = getSelectedCount() === filteredData.length && filteredData.length > 0;
+    if (allSelected) {
+      selectedIds = {};
+    } else {
+      for (var i = 0; i < filteredData.length; i++) {
+        selectedIds[filteredData[i].id] = true;
+      }
+    }
+    lastClickedIndex = -1;
+    renderHistory();
+  });
+
+  batchDeleteBtn.addEventListener('click', function () {
+    var ids = [];
+    for (var key in selectedIds) {
+      if (selectedIds[key]) ids.push(key);
+    }
+    if (ids.length === 0) return;
+
+    var idSet = {};
+    for (var j = 0; j < ids.length; j++) idSet[ids[j]] = true;
+    window.clipboardAPI.deleteHistoryItems(ids).then(function () {
+      historyData = historyData.filter(function (entry) { return !idSet[entry.id]; });
+      selectedIds = {};
+      lastClickedIndex = -1;
+      renderHistory();
+      showToast('已删除 ' + ids.length + ' 条记录');
+    });
+  });
 
   function loadLazyImages() {
     var imgContainers = document.querySelectorAll('[data-image-id]');
