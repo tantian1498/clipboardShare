@@ -23,7 +23,7 @@
       "node_modules/**/*"
     ],
     "mac": {
-      "target": "dmg",
+      "target": "zip",
       "icon": "electron/assets/icon.icns"
     },
     "win": {
