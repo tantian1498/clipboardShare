@@ -1,6 +1,6 @@
 {
   "name": "clipboard-share",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "跨电脑复制粘贴共享",
   "main": "electron/main.js",
   "scripts": {
