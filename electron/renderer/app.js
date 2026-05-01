@@ -182,7 +182,7 @@
               break;
             }
           }
-          renderHistory();
+          removeCard(entry.id);
         });
       });
 
@@ -194,6 +194,31 @@
     }
 
     return card;
+  }
+
+  function removeCard(id, callback) {
+    var card = historyList.querySelector('[data-id="' + id + '"]');
+    if (card) {
+      card.style.maxHeight = card.offsetHeight + 'px';
+      card.classList.add('removing');
+      setTimeout(function () {
+        if (card.parentNode) card.parentNode.removeChild(card);
+        if (callback) callback();
+      }, 200);
+    } else {
+      if (callback) callback();
+    }
+  }
+
+  function removeCards(ids, callback) {
+    var remaining = ids.length;
+    if (remaining === 0) { if (callback) callback(); return; }
+    for (var i = 0; i < ids.length; i++) {
+      removeCard(ids[i], function () {
+        remaining--;
+        if (remaining === 0 && callback) callback();
+      });
+    }
   }
 
   function renderHistory() {
@@ -290,11 +315,14 @@
     var idSet = {};
     for (var j = 0; j < ids.length; j++) idSet[ids[j]] = true;
     window.clipboardAPI.deleteHistoryItems(ids).then(function () {
+      var removedIds = ids.slice();
       historyData = historyData.filter(function (entry) { return !idSet[entry.id]; });
       selectedIds = {};
       lastClickedIndex = -1;
-      renderHistory();
-      showToast('已删除 ' + ids.length + ' 条记录');
+      removeCards(removedIds, function () {
+        exitEditMode();
+        showToast('已删除 ' + removedIds.length + ' 条记录');
+      });
     });
   });
 

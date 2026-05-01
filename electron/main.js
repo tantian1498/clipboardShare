@@ -30,6 +30,7 @@ var syncLogs = [];
 var MAX_LOGS = 50;
 
 var clipboardHistory = [];
+var skipNextHistoryDeleted = false;
 
 function simpleGet(url, callback) {
   var parsed = new URL(url);
@@ -254,6 +255,10 @@ engine.on('error', function (err) {
 });
 
 engine.on('history-deleted', function () {
+  if (skipNextHistoryDeleted) {
+    skipNextHistoryDeleted = false;
+    return;
+  }
   loadHistoryFromServer();
 });
 
@@ -433,6 +438,7 @@ ipcMain.handle('delete-history-item', function (_event, id) {
   for (var i = 0; i < clipboardHistory.length; i++) {
     if (clipboardHistory[i].id === id) {
       clipboardHistory.splice(i, 1);
+      skipNextHistoryDeleted = true;
       var config = store.getAll();
       var serverUrl = getEffectiveServerUrl(config);
       if (serverUrl) simpleDelete(serverUrl + '/api/history/' + id, function () {});
@@ -449,6 +455,7 @@ ipcMain.handle('delete-history-items', function (_event, ids) {
   clipboardHistory = clipboardHistory.filter(function (entry) {
     return !idSet[entry.id];
   });
+  skipNextHistoryDeleted = true;
   var config = store.getAll();
   var serverUrl = getEffectiveServerUrl(config);
   if (serverUrl) simplePost(serverUrl + '/api/history/batch-delete', { ids: ids }, function () {});

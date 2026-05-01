@@ -224,8 +224,18 @@ body {
   margin-bottom: 8px;
   box-shadow: var(--shadow);
   cursor: pointer;
-  transition: box-shadow 0.15s, background 0.15s, transform 0.1s;
+  transition: box-shadow 0.15s, background 0.15s, transform 0.1s, opacity 0.2s, max-height 0.2s;
   position: relative;
+}
+
+.history-card.removing {
+  opacity: 0;
+  max-height: 0 !important;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .history-card:hover {
